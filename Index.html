@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConnectHub QMS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Segoe UI', Sarabun, sans-serif; }
+  .tab-active { background:rgba(6,182,212,.15); color:#22d3ee; border-color:rgba(6,182,212,.35); }
+  .fade { animation: fadeIn .3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen">
+
+<!-- NAV -->
+
+<nav class="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-700/50">
+  <div class="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+    <div class="flex items-center gap-2">
+      <div class="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center text-base">🔗</div>
+      <span class="font-bold text-white hidden sm:inline">ConnectHub <span class="text-cyan-400 text-xs font-normal">QMS</span></span>
+    </div>
+    <div class="flex gap-1" id="mainNav"></div>
+    <div class="flex items-center gap-2">
+      <div id="userBadge" class="hidden sm:block text-right"></div>
+      <div id="userAvatar" class="w-9 h-9 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold"></div>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+
+<div id="app" class="max-w-7xl mx-auto px-4 py-6"></div>
+
+<!-- MODAL -->
+
+<div id="modal" class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between p-5 border-b border-slate-700">
+      <h3 id="modalTitle" class="font-bold text-white text-lg"></h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-white text-xl leading-none">✕</button>
+    </div>
+    <div id="modalBody" class="p-5"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+
+<div id="toast" class="fixed bottom-5 right-5 z-50 hidden">
+  <div id="toastMsg" class="bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-xl shadow-xl text-sm"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const STATE = {
+  tab:  'home',
+  dept: null,
+  deptTab: null,
+  user: { name: '', email: '', initials: '' },
+  cache: {},
+};
+
+const DEPTS = [
+  { id:'hr', name:'ทรัพยากรบุคคล', abbr:'ทรม.',   icon:'👥', grad:'from-blue-500 to-cyan-500',    desc:'Human Resources' },
+  { id:'ac', name:'บัญชี',          abbr:'บัญชี',  icon:'🧮', grad:'from-green-500 to-emerald-500', desc:'Accounting' },
+  { id:'sa', name:'ขาย',            abbr:'ขาย',    icon:'📈', grad:'from-orange-500 to-red-500',    desc:'Sales' },
+  { id:'pu', name:'จัดซื้อ',        abbr:'จ.ซื้อ', icon:'🛒', grad:'from-purple-500 to-pink-500',   desc:'Purchasing' },
+  { id:'pd', name:'การผลิต',        abbr:'ผลิต',   icon:'🏭', grad:'from-yellow-500 to-orange-500', desc:'Production' },
+  { id:'qa', name:'ควบคุมคุณภาพ',  abbr:'QA/QC',  icon:'✅', grad:'from-indigo-500 to-blue-500',  desc:'Quality Control' },
+  { id:'wh', name:'คลังสินค้า',    abbr:'คลัง',   icon:'🏪', grad:'from-slate-500 to-gray-600',    desc:'Warehouse' },
+  { id:'mn', name:'ซ่อมบำรุง',     abbr:'ซบ.',    icon:'🔧', grad:'from-amber-500 to-orange-600',  desc:'Maintenance' },
+];
+
+const DEPT_TABS = {
+  hr: [{id:'training',l:'อบรม',ic:'🎓'},{id:'employees',l:'พนักงาน',ic:'👤'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  ac: [{id:'budget',l:'งบประมาณ',ic:'💰'},{id:'approvals',l:'อนุมัติ',ic:'📋'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  sa: [{id:'targets',l:'เป้าขาย',ic:'📊'},{id:'orders',l:'Sales Order',ic:'📦'},{id:'complaints',l:'ร้องเรียน',ic:'📝'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  pu: [{id:'suppliers',l:'Supplier',ic:'🏭'},{id:'po',l:'ใบสั่งซื้อ',ic:'📋'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  pd: [{id:'lines',l:'ไลน์ผลิต',ic:'🏭'},{id:'daily',l:'บันทึกผลิต',ic:'📊'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  qa: [{id:'inspection',l:'ผลตรวจ',ic:'🔍'},{id:'calibration',l:'เครื่องมือวัด',ic:'⚖️'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  wh: [{id:'inventory',l:'สต็อก',ic:'📦'},{id:'movements',l:'รับ-จ่าย',ic:'↕️'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+  mn: [{id:'workorders',l:'ใบงานซ่อม',ic:'📋'},{id:'pm',l:'แผน PM',ic:'🗓️'},{id:'request',l:'แจ้งซ่อม',ic:'🛠️'},{id:'ncr',l:'NCR',ic:'⚠️'},{id:'capa',l:'CAPA',ic:'🔧'},{id:'docs',l:'เอกสาร',ic:'📄'},{id:'kpi',l:'KPI',ic:'📊'},{id:'audit',l:'Audit',ic:'🔍'}],
+};
+
+const SB = s => ({'pass':'bg-emerald-500/20 text-emerald-300','fail':'bg-red-500/20 text-red-300','ปกติ':'bg-emerald-500/20 text-emerald-300','มีผลบังคับใช้':'bg-emerald-500/20 text-emerald-300','ทบทวนใหม่':'bg-yellow-500/20 text-yellow-300','ปิดแล้ว':'bg-emerald-500/20 text-emerald-300','เสร็จสิ้น':'bg-emerald-500/20 text-emerald-300','เสร็จแล้ว':'bg-emerald-500/20 text-emerald-300','อยู่ระหว่างดำเนินการ':'bg-yellow-500/20 text-yellow-300','กำลังดำเนินการ':'bg-cyan-500/20 text-cyan-300','รอดำเนินการ':'bg-slate-500/20 text-slate-300','รออนุมัติ':'bg-yellow-500/20 text-yellow-300','อนุมัติแล้ว':'bg-emerald-500/20 text-emerald-300','Major':'bg-red-500/20 text-red-300','Minor':'bg-yellow-500/20 text-yellow-300','เกินกำหนด':'bg-red-500/20 text-red-300','ใกล้กำหนด':'bg-yellow-500/20 text-yellow-300','หมดอายุแล้ว':'bg-red-500/20 text-red-300','ใกล้หมดอายุ':'bg-yellow-500/20 text-yellow-300','Approved':'bg-emerald-500/20 text-emerald-300','Conditional':'bg-yellow-500/20 text-yellow-300','ผ่าน':'bg-emerald-500/20 text-emerald-300','ผ่านมีข้อสังเกต':'bg-yellow-500/20 text-yellow-300','ไม่ผ่าน':'bg-red-500/20 text-red-300','รับเรื่องแล้ว':'bg-cyan-500/20 text-cyan-300'}[s]||'bg-slate-500/20 text-slate-300');
+const DCB = {hr:'bg-blue-500/20 text-blue-300',ac:'bg-emerald-500/20 text-emerald-300',sa:'bg-orange-500/20 text-orange-300',pu:'bg-purple-500/20 text-purple-300',pd:'bg-yellow-500/20 text-yellow-300',qa:'bg-indigo-500/20 text-indigo-300',wh:'bg-slate-500/20 text-slate-300',mn:'bg-amber-500/20 text-amber-300'};
+
+// ═══════════════════════════════════════════════════════════════
+// SERVER CALL
+// ═══════════════════════════════════════════════════════════════
+function api(action, payload) {
+  return new Promise((res, rej) => {
+    google.script.run
+      .withSuccessHandler(r => { if (r && r.error) rej(r.error); else res(r); })
+      .withFailureHandler(e => rej(e.message || e))
+      .callServer(action, payload || {});
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const app = () => $('app');
+
+function loading(msg) {
+  app().innerHTML = `<div class="flex flex-col items-center justify-center py-24 gap-3">
+    <div class="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full spin"></div>
+    <p class="text-slate-400 text-sm">${msg||'กำลังโหลด...'}</p></div>`;
+}
+
+function empty(msg, sub) {
+  return `<div class="text-center py-12 bg-slate-800/40 border border-slate-700 rounded-xl">
+    <p class="text-3xl mb-2">📭</p>
+    <p class="text-slate-300 font-semibold">${msg||'ไม่มีข้อมูล'}</p>
+    ${sub?`<p class="text-slate-500 text-sm mt-1">${sub}</p>`:''}
+  </div>`;
+}
+
+function badge(s) { return `<span class="text-xs px-2 py-0.5 rounded-full ${SB(s)}">${s}</span>`; }
+
+function toast(msg, ok=true) {
+  const t=$('toast'), m=$('toastMsg');
+  m.textContent = msg;
+  m.className = `px-4 py-3 rounded-xl shadow-xl text-sm border ${ok?'bg-emerald-900/80 border-emerald-600 text-emerald-200':'bg-red-900/80 border-red-600 text-red-200'}`;
+  t.classList.remove('hidden');
+  setTimeout(()=>t.classList.add('hidden'), 3000);
+}
+
+function openModal(title, bodyHtml) {
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = bodyHtml;
+  $('modal').classList.remove('hidden');
+}
+function closeModal() { $('modal').classList.add('hidden'); }
+
+function card(content, extra='') {
+  return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 ${extra}">${content}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAV RENDER
+// ═══════════════════════════════════════════════════════════════
+function renderNav() {
+  const tabs = [['home','🏠','หน้าแรก'],['departments','📂','แผนก'],['announcements','📢','ประกาศ'],['events','🎉','กิจกรรม']];
+  $('mainNav').innerHTML = tabs.map(([t,ic,lb]) =>
+    `<button onclick="goTab('${t}')" class="px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium border transition ${STATE.tab===t?'tab-active border-transparent':'text-slate-300 border-transparent hover:text-white'}">
+      <span class="sm:hidden">${ic}</span><span class="hidden sm:inline">${lb}</span>
+    </button>`
+  ).join('');
+  const u = STATE.user;
+  if (u.name) {
+    $('userBadge').innerHTML = `<p class="text-xs text-white font-semibold leading-none">${u.name}</p><p class="text-xs text-slate-500 leading-none mt-0.5">${u.email}</p>`;
+    $('userAvatar').textContent = u.initials;
+  }
+}
+
+function goTab(t) { STATE.tab=t; STATE.dept=null; renderNav(); renderPage(); }
+function goDept(id) { STATE.dept=id; STATE.deptTab=DEPT_TABS[id][0].id; STATE.tab='departments'; renderNav(); renderPage(); }
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER PAGE ROUTER
+// ═══════════════════════════════════════════════════════════════
+async function renderPage() {
+  if (STATE.tab==='home')          return renderHome();
+  if (STATE.tab==='announcements') return renderAnnouncements();
+  if (STATE.tab==='events')        return renderEvents();
+  if (STATE.tab==='departments') {
+    if (STATE.dept) return renderDeptPage();
+    return renderDeptList();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HOME
+// ═══════════════════════════════════════════════════════════════
+async function renderHome() {
+  loading('โหลดภาพรวมองค์กร...');
+  const dash = await api('getDashboard');
+  const html = `<div class="space-y-8 fade">
+    <div class="text-center py-6">
+      <h1 class="text-4xl font-bold mb-2" style="background:linear-gradient(to right,#06b6d4,#60a5fa,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">ConnectHub QMS</h1>
+      <p class="text-slate-400">ระบบบริหารคุณภาพองค์กร — ISO 9001:2015</p>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      ${[['⚠️','NCR ทั้งหมด',dash.totalNcr],['🔴','NCR ค้างอยู่',dash.openNcr],['🔧','CAPA ทั้งหมด',dash.totalCapa],['📢','ประกาศ',dash.totalAnns]].map(([ic,lb,val])=>`
+      <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+        <div class="text-2xl mb-2">${ic}</div>
+        <p class="text-slate-400 text-xs mb-1">${lb}</p>
+        <p class="text-3xl font-bold text-white">${val||0}</p>
+      </div>`).join('')}
+    </div>
+    <div>
+      <h2 class="text-lg font-bold text-white mb-4">เข้าถึงแผนก</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        ${DEPTS.map(d=>`
+        <button onclick="goDept('${d.id}')" class="bg-gradient-to-br ${d.grad} rounded-xl p-4 text-white text-left hover:-translate-y-1 hover:shadow-xl transition-all duration-200">
+          <span class="text-2xl block mb-2">${d.icon}</span>
+          <p class="font-bold text-sm">${d.name}</p>
+          <p class="text-white/60 text-xs">${d.abbr}</p>
+        </button>`).join('')}
+      </div>
+    </div>
+    ${dash.recentNcr && dash.recentNcr.length ? `
+    <div>
+      <h2 class="text-lg font-bold text-white mb-4">NCR ล่าสุด</h2>
+      <div class="space-y-2">
+        ${dash.recentNcr.map(n=>{const d=DEPTS.find(x=>x.id===n.dept)||{};return `
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-cyan-400 font-mono text-xs">${n.no}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded-full ${DCB[n.dept]||''}">${d.icon||''} ${d.abbr||n.dept}</span>
+              ${badge(n.severity)}
+            </div>
+            <p class="text-slate-200 text-sm">${n.issue}</p>
+            <p class="text-slate-500 text-xs mt-0.5">เปิด ${n.opened}</p>
+          </div>
+          ${badge(n.status)}
+        </div>`;}).join('')}
+      </div>
+    </div>` : ''}
+  </div>`;
+  app().innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEPT LIST
+// ═══════════════════════════════════════════════════════════════
+function renderDeptList() {
+  app().innerHTML = `<div class="fade">
+    <h1 class="text-3xl font-bold text-white mb-2">เลือกแผนก</h1>
+    <p class="text-slate-400 mb-8">แต่ละแผนกมีระบบ QMS และฟีเจอร์เฉพาะของตัวเอง</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      ${DEPTS.map(d=>`
+      <button onclick="goDept('${d.id}')" class="bg-gradient-to-br ${d.grad} rounded-2xl p-6 text-white text-left relative overflow-hidden hover:-translate-y-2 hover:shadow-2xl transition-all duration-300">
+        <div class="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full"></div>
+        <div class="relative z-10">
+          <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center text-2xl mb-4">${d.icon}</div>
+          <h3 class="font-bold mb-1">${d.name}</h3>
+          <p class="text-white/70 text-xs mb-3">${d.desc}</p>
+          <div class="flex flex-col gap-0.5 text-xs text-white/80">
+            ${(DEPT_TABS[d.id]||[]).slice(0,3).map(t=>`<span>· ${t.l}</span>`).join('')}
+          </div>
+        </div>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEPT PAGE
+// ═══════════════════════════════════════════════════════════════
+async function renderDeptPage() {
+  const d = DEPTS.find(x=>x.id===STATE.dept);
+  if (!d) return;
+  const tabs = DEPT_TABS[d.id]||[];
+  const tabBar = tabs.map(t=>`
+    <button onclick="setDeptTab('${t.id}')" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap border transition ${STATE.deptTab===t.id?'tab-active':'text-slate-400 border-transparent hover:text-white hover:bg-slate-700/50'}">
+      ${t.ic} ${t.l}
+    </button>`).join('');
+  app().innerHTML = `<div class="fade flex flex-col" style="min-height:80vh">
+    <div class="bg-gradient-to-r ${d.grad} rounded-2xl px-6 py-5 mb-0">
+      <button onclick="goTab('departments')" class="text-white/70 hover:text-white text-sm mb-3 flex items-center gap-1">← กลับ</button>
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-3xl">${d.icon}</div>
+        <div><h1 class="text-2xl font-bold text-white">${d.name}</h1><p class="text-white/70 text-sm">${d.desc}</p></div>
+      </div>
+    </div>
+    <div class="flex gap-1 py-3 overflow-x-auto flex-shrink-0 bg-slate-800/60 border-b border-slate-700 px-2 rounded-b-xl mb-4">${tabBar}</div>
+    <div id="deptContent" class="flex-1"></div>
+  </div>`;
+  await loadDeptTab();
+}
+
+function setDeptTab(t) { STATE.deptTab=t; renderNav(); loadDeptTab(); }
+
+async function loadDeptTab() {
+  const cont = $('deptContent');
+  if (!cont) return;
+  cont.innerHTML = `<div class="flex items-center justify-center py-12"><div class="w-7 h-7 border-2 border-cyan-500 border-t-transparent rounded-full spin"></div></div>`;
+  const t = STATE.deptTab, dept = STATE.dept;
+  try {
+    // QMS shared tabs
+    if (t==='ncr')   return renderNCR(cont, dept);
+    if (t==='capa')  return renderCAPA(cont, dept);
+    if (t==='docs')  return renderDocs(cont, dept);
+    if (t==='kpi')   return renderKPI(cont, dept);
+    if (t==='audit') return renderAudit(cont, dept);
+    // Dept-specific tabs
+    if (dept==='hr') {
+      if (t==='training')  return renderTraining(cont);
+      if (t==='employees') return renderEmployees(cont);
+    }
+    if (dept==='ac') {
+      if (t==='budget')    return renderBudget(cont);
+      if (t==='approvals') return renderApprovals(cont);
+    }
+    if (dept==='sa') {
+      if (t==='targets')    return renderSalesTargets(cont);
+      if (t==='orders')     return renderSalesOrders(cont);
+      if (t==='complaints') return renderComplaints(cont);
+    }
+    if (dept==='pu') {
+      if (t==='suppliers') return renderSuppliers(cont);
+      if (t==='po')        return renderPO(cont);
+    }
+    if (dept==='pd') {
+      if (t==='lines')  return renderLines(cont);
+      if (t==='daily')  return renderDailyProd(cont);
+    }
+    if (dept==='qa') {
+      if (t==='inspection')  return renderInspection(cont);
+      if (t==='calibration') return renderCalibration(cont);
+    }
+    if (dept==='wh') {
+      if (t==='inventory')  return renderInventory(cont);
+      if (t==='movements')  return renderMovements(cont);
+    }
+    if (dept==='mn') {
+      if (t==='workorders') return renderWorkOrders(cont);
+      if (t==='pm')         return renderPM(cont);
+      if (t==='request')    return renderWOForm(cont);
+    }
+  } catch(e) { cont.innerHTML = `<p class="text-red-400 text-sm p-4">เกิดข้อผิดพลาด: ${e}</p>`; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SHARED QMS TABS
+// ═══════════════════════════════════════════════════════════════
+async function renderNCR(cont, dept) {
+  const data = await api('getNCR', {dept});
+  cont.innerHTML = `<div class="fade">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-bold text-white">Non-Conformance Report</h3>
+      <button onclick="showAddNCR('${dept}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม NCR</button>
+    </div>
+    ${data.length ? data.map(n=>`
+    <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+      <div class="flex justify-between mb-2">
+        <span class="text-cyan-400 font-mono text-xs">${n.no}</span>
+        <div class="flex gap-1.5">${badge(n.severity)}${badge(n.status)}</div>
+      </div>
+      <p class="text-white font-medium text-sm mb-1">${n.issue}</p>
+      <p class="text-slate-500 text-xs">เปิด ${n.opened}${n.closedDate?' · ปิด '+n.closedDate:''}</p>
+      <div class="flex gap-2 mt-3">
+        <button onclick="showEditNCR('${n.id}','${n.status}')" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded transition">แก้ไขสถานะ</button>
+        <button onclick="delNCR('${n.id}')" class="text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300 px-2 py-1 rounded transition">ลบ</button>
+      </div>
+    </div>`).join('') : empty('ไม่มี NCR','ระบบงานทำงานปกติ')}
+  </div>`;
+}
+
+function showAddNCR(dept) {
+  openModal('เพิ่ม NCR', `
+    <div class="space-y-3">
+      <div><label class="text-xs text-slate-400 mb-1 block">สิ่งที่ไม่เป็นไปตามข้อกำหนด *</label>
+        <textarea id="f_issue" rows="3" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="อธิบายสิ่งที่พบ..."></textarea></div>
+
+```
+  <div><label class="text-xs text-slate-400 mb-1 block">ระดับ</label>
+    <select id="f_severity" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none">
+      <option>Major</option><option selected>Minor</option>
+    </select></div>
+  <button onclick="doAddNCR('${dept}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก NCR</button>
+</div>`);
+```
+
+}
+
+async function doAddNCR(dept) {
+const issue = $(‘f_issue’).value.trim();
+if (!issue) return toast(‘กรุณากรอกรายละเอียด’, false);
+await api(‘addNCR’, {data:{dept, issue, severity: $(‘f_severity’).value}});
+closeModal(); toast(‘บันทึก NCR สำเร็จ’);
+renderNCR($(‘deptContent’), dept);
+}
+
+function showEditNCR(id, currentStatus) {
+const statuses = [‘อยู่ระหว่างดำเนินการ’,‘กำลังดำเนินการ’,‘ปิดแล้ว’];
+openModal(‘อัปเดตสถานะ NCR’, ` <div class="space-y-3"> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${statuses.map(s=>`<option ${s===currentStatus?‘selected’:’’}>${s}</option>`).join('')} </select> <div><label class="text-xs text-slate-400 mb-1 block">วันที่ปิด (ถ้าปิดแล้ว)</label> <input type="date" id="f_closed" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doUpdateNCR('${id}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doUpdateNCR(id) {
+const u = {status: $(‘f_status’).value};
+const cd = $(‘f_closed’).value;
+if (cd) u.closedDate = cd.split(’-’).reverse().join(’/’);
+await api(‘updateNCR’, {id, data:u});
+closeModal(); toast(‘อัปเดต NCR สำเร็จ’);
+renderNCR($(‘deptContent’), STATE.dept);
+}
+
+async function delNCR(id) {
+if (!confirm(‘ยืนยันลบ NCR นี้?’)) return;
+await api(‘deleteNCR’, {id});
+toast(‘ลบ NCR แล้ว’);
+renderNCR($(‘deptContent’), STATE.dept);
+}
+
+async function renderCAPA(cont, dept) {
+const data = await api(‘getCAPA’, {dept});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">Corrective & Preventive Action</h3> <button onclick="showAddCAPA('${dept}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม CAPA</button> </div> ${data.length ? data.map(c=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<span class="text-cyan-400 font-mono text-xs">${c.no}</span>${badge(c.status)}
+</div>
+<p class="text-slate-400 text-xs mb-1">อ้างอิง: ${c.ncr_ref} · เจ้าของ: ${c.owner}</p>
+<p class="text-white text-sm leading-relaxed">${c.action}</p>
+<p class="text-slate-500 text-xs mt-2">กำหนด ${c.due}</p>
+<div class="flex gap-2 mt-3">
+<button onclick="showEditCAPA('${c.id}','${c.status}')" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded transition">อัปเดต</button>
+<button onclick="delCAPA('${c.id}')" class="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded transition">ลบ</button>
+</div>
+</div>`).join(’’) : empty(‘ไม่มี CAPA’)}
+
+  </div>`;
+}
+
+function showAddCAPA(dept) {
+openModal(‘เพิ่ม CAPA’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">อ้างอิง NCR</label> <input id="f_ncr_ref" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="NCR-XXX-2025-XXXX"/></div> <div><label class="text-xs text-slate-400 mb-1 block">การดำเนินการแก้ไข *</label> <textarea id="f_action" rows="3" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"></textarea></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">กำหนดเสร็จ</label> <input type="date" id="f_due" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เจ้าของงาน</label> <input id="f_owner" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="ชื่อผู้รับผิดชอบ"/></div> </div> <button onclick="doAddCAPA('${dept}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก CAPA</button> </div>`);
+}
+
+async function doAddCAPA(dept) {
+const action = $(‘f_action’).value.trim();
+if (!action) return toast(‘กรุณากรอกการดำเนินการ’, false);
+const due = $(‘f_due’).value ? $(‘f_due’).value.split(’-’).reverse().join(’/’) : ‘’;
+await api(‘addCAPA’, {data:{dept, ncr_ref:$(‘f_ncr_ref’).value, action, due, owner:$(‘f_owner’).value}});
+closeModal(); toast(‘บันทึก CAPA สำเร็จ’);
+renderCAPA($(‘deptContent’), dept);
+}
+
+function showEditCAPA(id, cur) {
+const statuses = [‘รอดำเนินการ’,‘กำลังดำเนินการ’,‘เสร็จสิ้น’];
+openModal(‘อัปเดต CAPA’, ` <select id="f_cstatus" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none mb-3"> ${statuses.map(s=>`<option ${s===cur?‘selected’:’’}>${s}</option>`).join('')} </select> <button onclick="doUpdateCAPA('${id}')" class="w-full bg-cyan-600 text-white py-2.5 rounded-xl text-sm font-semibold">บันทึก</button>`);
+}
+
+async function doUpdateCAPA(id) {
+await api(‘updateCAPA’, {id, data:{status:$(‘f_cstatus’).value}});
+closeModal(); toast(‘อัปเดต CAPA สำเร็จ’);
+renderCAPA($(‘deptContent’), STATE.dept);
+}
+
+async function delCAPA(id) {
+if (!confirm(‘ยืนยันลบ CAPA?’)) return;
+await api(‘deleteCAPA’, {id}); toast(‘ลบแล้ว’);
+renderCAPA($(‘deptContent’), STATE.dept);
+}
+
+async function renderDocs(cont, dept) {
+const data = await api(‘getDocuments’, {dept});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">เอกสาร QMS</h3> <button onclick="showAddDoc('${dept}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่มเอกสาร</button> </div> ${data.length ? `<div class="overflow-x-auto"><table class="w-full text-sm">
+<thead><tr class="border-b border-slate-700 text-slate-400 text-left">
+<th class="pb-2 pr-3">รหัส</th><th class="pb-2 pr-3">ชื่อเอกสาร</th><th class="pb-2 pr-3">Rev</th><th class="pb-2 pr-3">วันที่</th><th class="pb-2 pr-3">สถานะ</th><th class="pb-2"></th>
+</tr></thead>
+<tbody>${data.map(d=>` <tr class="border-b border-slate-800 hover:bg-slate-800/40"> <td class="py-2 pr-3 text-cyan-400 font-mono text-xs">${d.code}</td> <td class="py-2 pr-3 text-slate-200">${d.title}</td> <td class="py-2 pr-3 text-slate-400 text-xs">${d.rev}</td> <td class="py-2 pr-3 text-slate-400 text-xs">${d.effectiveDate}</td> <td class="py-2 pr-3">${badge(d.status)}</td> <td class="py-2"><button onclick="delDoc('${d.id}')" class="text-xs text-red-400 hover:text-red-300">ลบ</button></td> </tr>`).join(’’)}
+</tbody></table></div>` : empty(‘ไม่มีเอกสาร’)}
+
+  </div>`;
+}
+
+function showAddDoc(dept) {
+openModal(‘เพิ่มเอกสาร QMS’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">รหัสเอกสาร</label> <input id="f_code" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="HR-QP-001"/></div> <div><label class="text-xs text-slate-400 mb-1 block">Revision</label> <input id="f_rev" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="Rev.1"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อเอกสาร *</label> <input id="f_title" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">วันที่มีผล</label> <input type="date" id="f_effdate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">สถานะ</label> <select id="f_dstatus" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>มีผลบังคับใช้</option><option>ทบทวนใหม่</option><option>ยกเลิก</option> </select></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">เจ้าของเอกสาร</label> <input id="f_owner" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddDoc('${dept}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddDoc(dept) {
+const title = $(‘f_title’).value.trim();
+if (!title) return toast(‘กรุณากรอกชื่อเอกสาร’, false);
+const ed = $(‘f_effdate’).value ? $(‘f_effdate’).value.split(’-’).reverse().join(’/’) : ‘’;
+await api(‘addDocument’, {data:{dept, code:$(‘f_code’).value, title, rev:$(‘f_rev’).value, effectiveDate:ed, status:$(‘f_dstatus’).value, owner:$(‘f_owner’).value}});
+closeModal(); toast(‘เพิ่มเอกสารสำเร็จ’);
+renderDocs($(‘deptContent’), dept);
+}
+
+async function delDoc(id) {
+if (!confirm(‘ยืนยันลบเอกสาร?’)) return;
+await api(‘deleteDocument’, {id}); toast(‘ลบแล้ว’);
+renderDocs($(‘deptContent’), STATE.dept);
+}
+
+async function renderKPI(cont, dept) {
+const data = await api(‘getKPI’, {dept});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">KPI คุณภาพ</h3> <button onclick="showAddKPI('${dept}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม KPI</button> </div> <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"> ${data.length ? data.map(k=>`
+<div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5">
+<div class="flex justify-between mb-3">
+<p class="text-slate-300 text-sm font-medium">${k.label}</p>
+${badge(k.status===‘pass’?‘pass’:‘fail’)}
+</div>
+<p class="text-3xl font-bold mb-1 ${k.status==='pass'?'text-emerald-400':'text-red-400'}">${k.value} ${k.unit||’’}</p>
+<p class="text-slate-500 text-xs">เป้าหมาย: ${k.target} · อัปเดต ${k.updatedDate}</p>
+<div class="flex gap-2 mt-3">
+<button onclick="showUpdateKPI('${k.id}','${k.value}')" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded">อัปเดตค่า</button>
+<button onclick="delKPI('${k.id}')" class="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded">ลบ</button>
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มี KPI’,‘กด + เพิ่ม KPI เพื่อเริ่มต้น’)}
+</div>
+
+  </div>`;
+}
+
+function showAddKPI(dept) {
+openModal(‘เพิ่ม KPI’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อตัวชี้วัด *</label> <input id="f_label" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="เช่น อัตราของเสีย"/></div> <div class="grid grid-cols-3 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ค่าปัจจุบัน</label> <input id="f_value" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เป้าหมาย</label> <input id="f_target" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">หน่วย</label> <input id="f_unit" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="%"/></div> </div> <button onclick="doAddKPI('${dept}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddKPI(dept) {
+const label = $(‘f_label’).value.trim();
+if (!label) return toast(‘กรุณากรอกชื่อ KPI’, false);
+await api(‘addKPI’, {data:{dept, label, value:$(‘f_value’).value, target:$(‘f_target’).value, unit:$(‘f_unit’).value}});
+closeModal(); toast(‘เพิ่ม KPI สำเร็จ’);
+renderKPI($(‘deptContent’), dept);
+}
+
+function showUpdateKPI(id, cur) {
+openModal(‘อัปเดตค่า KPI’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ค่าใหม่</label> <input id="f_newval" type="number" value="${cur}" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doUpdateKPI('${id}')" class="w-full bg-cyan-600 text-white py-2.5 rounded-xl text-sm font-semibold">บันทึก</button> </div>`);
+}
+
+async function doUpdateKPI(id) {
+await api(‘updateKPI’, {id, data:{value:$(‘f_newval’).value}});
+closeModal(); toast(‘อัปเดต KPI สำเร็จ’);
+renderKPI($(‘deptContent’), STATE.dept);
+}
+
+async function delKPI(id) {
+if (!confirm(‘ยืนยันลบ KPI?’)) return;
+await api(‘deleteKPI’, {id}); toast(‘ลบแล้ว’);
+renderKPI($(‘deptContent’), STATE.dept);
+}
+
+async function renderAudit(cont, dept) {
+const data = await api(‘getAudit’, {dept});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ข้อมูล Audit</h3> <button onclick="showAddAudit('${dept}')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ บันทึก Audit</button> </div> ${data.length ? data.map(a=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-5 mb-3 grid grid-cols-2 gap-4">
+<div><p class="text-slate-500 text-xs">ล่าสุด</p><p class="text-white font-semibold">${a.lastDate}</p></div>
+<div><p class="text-slate-500 text-xs">ผล</p><p class="text-white font-semibold">${a.result}</p></div>
+<div><p class="text-slate-500 text-xs">ครั้งถัดไป</p><p class="text-white font-semibold">${a.nextDate}</p></div>
+<div><p class="text-slate-500 text-xs">ผู้ตรวจ</p><p class="text-white font-semibold">${a.auditor}</p></div>
+${a.scope?`<div class="col-span-2"><p class="text-slate-500 text-xs">ขอบเขต</p><p class="text-white text-sm">${a.scope}</p></div>`:’’}
+<div class="col-span-2 flex gap-2">
+<button onclick="delAudit('${a.id}')" class="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded">ลบ</button>
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มีข้อมูล Audit’)}
+
+  </div>`;
+}
+
+function showAddAudit(dept) {
+openModal(‘บันทึก Audit’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">วันที่ตรวจล่าสุด</label> <input type="date" id="f_lastdate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ผลการตรวจ</label> <input id="f_result" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="Pass / Pass with Minor NC"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ครั้งถัดไป</label> <input type="date" id="f_nextdate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ตรวจ</label> <input id="f_auditor" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ขอบเขต</label> <input id="f_scope" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddAudit('${dept}')" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddAudit(dept) {
+const fmt = v => v ? v.split(’-’).reverse().join(’/’) : ‘’;
+await api(‘addAudit’, {data:{dept, lastDate:fmt($(‘f_lastdate’).value), result:$(‘f_result’).value, nextDate:fmt($(‘f_nextdate’).value), auditor:$(‘f_auditor’).value, scope:$(‘f_scope’).value}});
+closeModal(); toast(‘บันทึก Audit สำเร็จ’);
+renderAudit($(‘deptContent’), dept);
+}
+
+async function delAudit(id) {
+if (!confirm(‘ยืนยันลบ?’)) return;
+await api(‘deleteAudit’, {id}); toast(‘ลบแล้ว’);
+renderAudit($(‘deptContent’), STATE.dept);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HR: TRAINING
+// ═══════════════════════════════════════════════════════════════
+async function renderTraining(cont) {
+const data = await api(‘getTraining’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">แผนการอบรม</h3> <button onclick="showAddTraining()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(t=>{ const pct = t.target>0 ? Math.round(+t.done/+t.target*100) : 0; return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<p class="text-white font-medium text-sm">${t.name}</p>${badge(t.status)}
+</div>
+<p class="text-slate-500 text-xs mb-2">ผู้สอน: ${t.trainer} · กำหนด ${t.dueDate}</p>
+<div class="flex items-center gap-3">
+<div class="flex-1 bg-slate-700 rounded-full h-2">
+<div class="bg-blue-400 h-2 rounded-full" style="width:${pct}%"></div>
+</div>
+<span class="text-xs text-slate-300">${t.done}/${t.target}</span>
+</div>
+<div class="flex gap-2 mt-3">
+<button onclick="showUpdateTraining('${t.id}','${t.done}')" class="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded">อัปเดต</button>
+<button onclick="delTraining('${t.id}')" class="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded">ลบ</button>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีแผนการอบรม’)}
+
+  </div>`;
+}
+
+function showAddTraining() {
+openModal(‘เพิ่มแผนการอบรม’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อหลักสูตร *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">เป้าหมาย (คน)</label> <input id="f_target" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">กำหนดเสร็จ</label> <input type="date" id="f_due" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">วิทยากร</label> <input id="f_trainer" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>ยังไม่เริ่ม</option><option>กำลังดำเนินการ</option><option>เสร็จสิ้น</option> </select> <button onclick="doAddTraining()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddTraining() {
+const name = $(‘f_name’).value.trim();
+if (!name) return toast(‘กรุณากรอกชื่อหลักสูตร’, false);
+const due = $(‘f_due’).value ? $(‘f_due’).value.split(’-’).reverse().join(’/’) : ‘’;
+await api(‘addTraining’, {data:{name, target:$(‘f_target’).value, done:‘0’, dueDate:due, trainer:$(‘f_trainer’).value, status:$(‘f_status’).value}});
+closeModal(); toast(‘เพิ่มแผนอบรมสำเร็จ’);
+renderTraining($(‘deptContent’));
+}
+
+function showUpdateTraining(id, done) {
+openModal(‘อัปเดตจำนวนผู้เข้าอบรม’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">จำนวนที่อบรมแล้ว (คน)</label> <input id="f_done" type="number" value="${done}" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>ยังไม่เริ่ม</option><option>กำลังดำเนินการ</option><option>เสร็จสิ้น</option> </select> <button onclick="doUpdateTraining('${id}')" class="w-full bg-cyan-600 text-white py-2.5 rounded-xl text-sm font-semibold">บันทึก</button> </div>`);
+}
+
+async function doUpdateTraining(id) {
+await api(‘updateTraining’, {id, data:{done:$(‘f_done’).value, status:$(‘f_status’).value}});
+closeModal(); toast(‘อัปเดตสำเร็จ’);
+renderTraining($(‘deptContent’));
+}
+
+async function delTraining(id) {
+if (!confirm(‘ยืนยันลบ?’)) return;
+await api(‘deleteTraining’,{id}); toast(‘ลบแล้ว’);
+renderTraining($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HR: EMPLOYEES
+// ═══════════════════════════════════════════════════════════════
+async function renderEmployees(cont) {
+const data = await api(‘getEmployees’, {});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ทะเบียนพนักงาน</h3> <button onclick="showAddEmployee()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(e=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center gap-4">
+<div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">${e.name[0]||’?’}</div>
+<div class="flex-1 min-w-0">
+<p class="text-white font-medium text-sm">${e.name}</p>
+<p class="text-slate-400 text-xs">${e.position} · ${DEPTS.find(d=>d.id===e.dept)?.abbr||e.dept}</p>
+<p class="text-slate-500 text-xs">${e.email}</p>
+</div>
+<div class="text-right flex-shrink-0">
+${badge(e.empStatus||‘ปกติ’)}
+${e.evaluation?`<p class="text-xs text-slate-400 mt-1">ประเมิน: <span class="text-white font-bold">${e.evaluation}</span></p>`:’’}
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มีข้อมูลพนักงาน’)}
+
+  </div>`;
+}
+
+function showAddEmployee() {
+openModal(‘เพิ่มพนักงาน’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อ-สกุล *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ตำแหน่ง</label> <input id="f_pos" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">แผนก</label> <select id="f_dept" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${DEPTS.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')} </select></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">Email</label> <input id="f_email" type="email" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddEmployee()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddEmployee() {
+const name=$(‘f_name’).value.trim();
+if(!name) return toast(‘กรุณากรอกชื่อ’,false);
+await api(‘addEmployee’,{data:{name,position:$(‘f_pos’).value,dept:$(‘f_dept’).value,email:$(‘f_email’).value,empStatus:‘ปกติ’}});
+closeModal(); toast(‘เพิ่มพนักงานสำเร็จ’);
+renderEmployees($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AC: BUDGET & APPROVALS
+// ═══════════════════════════════════════════════════════════════
+async function renderBudget(cont) {
+const data = await api(‘getBudget’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">งบประมาณ</h3> <button onclick="showAddBudget()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(b=>{ const pct=+b.budget>0?Math.min(120,Math.round(+b.actual/+b.budget*100)):0; const over=+b.actual>+b.budget; return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<p class="text-white font-medium text-sm">${b.category}</p>
+<div class="text-right">
+<p class="font-bold ${over?'text-red-400':'text-emerald-400'}">${(+b.actual).toLocaleString()} ฿</p>
+<p class="text-slate-500 text-xs">งบ ${(+b.budget).toLocaleString()} ฿ · ${b.period}</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="flex-1 bg-slate-700 rounded-full h-2">
+<div class="h-2 rounded-full ${over?'bg-red-400':'bg-emerald-400'}" style="width:${Math.min(100,pct)}%"></div>
+</div>
+<span class="text-xs font-bold w-10 text-right ${over?'text-red-400':'text-emerald-400'}">${pct}%</span>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีข้อมูลงบประมาณ’)}
+
+  </div>`;
+}
+
+function showAddBudget() {
+openModal(‘เพิ่มงบประมาณ’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">หมวดหมู่ *</label> <input id="f_cat" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="เช่น ค่าใช้จ่ายบุคลากร"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">งบประมาณ (฿)</label> <input id="f_budget" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ค่าจริง (฿)</label> <input id="f_actual" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ช่วงเวลา</label> <input id="f_period" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="Q1/2568"/></div> <button onclick="doAddBudget()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddBudget() {
+const cat=$(‘f_cat’).value.trim();
+if(!cat) return toast(‘กรุณากรอกหมวดหมู่’,false);
+await api(‘addBudget’,{data:{category:cat,budget:$(‘f_budget’).value,actual:$(‘f_actual’).value,period:$(‘f_period’).value}});
+closeModal(); toast(‘บันทึกสำเร็จ’);
+renderBudget($(‘deptContent’));
+}
+
+async function renderApprovals(cont) {
+const data = await api(‘getApprovals’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">รายการรออนุมัติ</h3> <button onclick="showAddApproval()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(a=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center justify-between">
+<div>
+<p class="text-cyan-400 font-mono text-xs">${a.no}</p>
+<p class="text-white font-medium text-sm">${a.item}</p>
+<div class="flex gap-2 mt-1">
+<span class="text-xs px-1.5 py-0.5 rounded-full ${DCB[a.dept]||''}">${DEPTS.find(d=>d.id===a.dept)?.icon||’’} ${DEPTS.find(d=>d.id===a.dept)?.abbr||a.dept}</span>
+<span class="text-slate-500 text-xs">${a.requester} · ${a.requestDate}</span>
+</div>
+</div>
+<div class="text-right flex-shrink-0 ml-4">
+<p class="text-white font-bold">${(+a.amount).toLocaleString()} ฿</p>
+<button onclick="toggleApproval('${a.id}','${a.status}')" class="mt-1 text-xs px-2 py-0.5 rounded-full cursor-pointer ${SB(a.status)}">${a.status}</button>
+</div>
+</div>`).join(’’) : empty(‘ไม่มีรายการรออนุมัติ’)}
+
+  </div>`;
+}
+
+function showAddApproval() {
+openModal(‘เพิ่มรายการขออนุมัติ’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">รายการ *</label> <input id="f_item" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="เช่น ค่าอุปกรณ์สำนักงาน"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">จำนวน (฿)</label> <input id="f_amount" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">แผนกผู้ขอ</label> <select id="f_dept" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${DEPTS.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')} </select></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ขอ</label> <input id="f_req" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddApproval()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">ส่งขออนุมัติ</button> </div>`);
+}
+
+async function doAddApproval() {
+const item=$(‘f_item’).value.trim();
+if(!item) return toast(‘กรุณากรอกรายการ’,false);
+await api(‘addApproval’,{data:{item,amount:$(‘f_amount’).value,dept:$(‘f_dept’).value,requester:$(‘f_req’).value}});
+closeModal(); toast(‘ส่งรายการสำเร็จ’);
+renderApprovals($(‘deptContent’));
+}
+
+async function toggleApproval(id, cur) {
+const s = cur===‘รออนุมัติ’?‘อนุมัติแล้ว’:‘รออนุมัติ’;
+await api(‘updateApproval’,{id,data:{status:s}});
+toast(s===‘อนุมัติแล้ว’?‘อนุมัติแล้ว ✓’:‘ยกเลิกการอนุมัติ’);
+renderApprovals($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SA: TARGETS, ORDERS, COMPLAINTS
+// ═══════════════════════════════════════════════════════════════
+async function renderSalesTargets(cont) {
+const data = await api(‘getSalesTargets’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">เป้าหมายยอดขาย</h3> <button onclick="showAddTarget()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(t=>{ const pct=+t.target>0?Math.round(+t.actual/+t.target*100):0; const ok=+t.actual>=+t.target; return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<p class="text-white font-medium text-sm">${t.product} <span class="text-slate-500 text-xs">${t.period}</span></p>
+<div class="text-right">
+<p class="font-bold ${ok?'text-emerald-400':'text-orange-400'}">${(+t.actual).toLocaleString()} ฿</p>
+<p class="text-slate-500 text-xs">เป้า ${(+t.target).toLocaleString()} ฿</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="flex-1 bg-slate-700 rounded-full h-2.5">
+<div class="h-2.5 rounded-full ${ok?'bg-emerald-400':'bg-orange-400'}" style="width:${Math.min(100,pct)}%"></div>
+</div>
+<span class="text-xs font-bold w-10 text-right ${ok?'text-emerald-400':'text-orange-400'}">${pct}%</span>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีข้อมูลเป้าหมาย’)}
+
+  </div>`;
+}
+
+function showAddTarget() {
+openModal(‘เพิ่มเป้าหมายยอดขาย’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">สินค้า *</label> <input id="f_product" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">เป้า (฿)</label> <input id="f_target" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ยอดจริง (฿)</label> <input id="f_actual" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ช่วงเวลา</label> <input id="f_period" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="เม.ย. 2568"/></div> <button onclick="doAddTarget()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddTarget() {
+const p=$(‘f_product’).value.trim();
+if(!p) return toast(‘กรุณากรอกชื่อสินค้า’,false);
+await api(‘addSalesTarget’,{data:{product:p,target:$(‘f_target’).value,actual:$(‘f_actual’).value,period:$(‘f_period’).value}});
+closeModal(); toast(‘บันทึกสำเร็จ’);
+renderSalesTargets($(‘deptContent’));
+}
+
+async function renderSalesOrders(cont) {
+const data = await api(‘getSalesOrders’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">Sales Orders</h3> <button onclick="showAddOrder()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(o=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center justify-between">
+<div>
+<p class="text-cyan-400 font-mono text-xs">${o.no}</p>
+<p class="text-white font-medium text-sm">${o.customer}</p>
+<p class="text-slate-500 text-xs">${o.product} · กำหนด ${o.dueDate}</p>
+</div>
+<div class="text-right flex-shrink-0 ml-4">
+<p class="text-white font-bold">${(+o.amount).toLocaleString()} ฿</p>
+${badge(o.status)}
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มี Sales Order’)}
+
+  </div>`;
+}
+
+function showAddOrder() {
+openModal(‘เพิ่ม Sales Order’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ลูกค้า *</label> <input id="f_customer" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">สินค้า</label> <input id="f_product" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">มูลค่า (฿)</label> <input id="f_amount" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">กำหนดส่ง</label> <input type="date" id="f_due" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">สถานะ</label> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>รอยืนยัน</option><option>กำลังผลิต</option><option>จัดส่งแล้ว</option> </select></div> </div> <button onclick="doAddOrder()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddOrder() {
+const c=$(‘f_customer’).value.trim();
+if(!c) return toast(‘กรุณากรอกชื่อลูกค้า’,false);
+const d=$(‘f_due’).value?$(‘f_due’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addSalesOrder’,{data:{customer:c,product:$(‘f_product’).value,amount:$(‘f_amount’).value,dueDate:d,status:$(‘f_status’).value}});
+closeModal(); toast(‘บันทึก SO สำเร็จ’);
+renderSalesOrders($(‘deptContent’));
+}
+
+async function renderComplaints(cont) {
+const data = await api(‘getComplaints’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ข้อร้องเรียนลูกค้า</h3> <button onclick="showAddComplaint()" class="bg-orange-600 hover:bg-orange-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ รับเรื่อง</button> </div> <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-3 mb-4 text-xs text-indigo-300 flex items-center gap-2"> ✅ เมื่อบันทึกข้อร้องเรียน ระบบจะแจ้งเตือน QA/QC อัตโนมัติผ่าน Announcements </div> ${data.length ? data.map(c=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2">
+<div class="flex justify-between mb-2">
+<span class="text-orange-400 font-mono text-xs">${c.no}</span>
+<div class="flex gap-1.5">${badge(c.severity)}${badge(c.status)}</div>
+</div>
+<p class="text-white font-medium text-sm">${c.customer}</p>
+<p class="text-slate-400 text-xs">${c.type} · ${c.date}</p>
+<p class="text-slate-300 text-sm mt-1">${c.detail}</p>
+${c.qaNotified===‘TRUE’?`<p class="text-indigo-400 text-xs mt-2">✅ แจ้ง QA แล้ว — ${c.qaLink}</p>`:’’}
+</div>`).join(’’) : empty(‘ยังไม่มีข้อร้องเรียน’)}
+
+  </div>`;
+}
+
+function showAddComplaint() {
+openModal(‘รับข้อร้องเรียนลูกค้า’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ลูกค้า *</label> <input id="f_customer" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ติดต่อ</label> <input id="f_contact" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">สินค้า</label> <input id="f_product" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท</label> <select id="f_type" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>สินค้า (คุณภาพ)</option><option>การจัดส่ง</option><option>บรรจุภัณฑ์</option><option>เอกสาร</option><option>อื่นๆ</option> </select></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ความรุนแรง</label> <select id="f_severity" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>วิกฤต</option><option>สูง</option><option>ปานกลาง</option><option>ต่ำ</option> </select></div> <div><label class="text-xs text-slate-400 mb-1 block">รายละเอียด *</label> <textarea id="f_detail" rows="3" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"></textarea></div> <button onclick="doAddComplaint()" class="w-full bg-orange-600 hover:bg-orange-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">📤 บันทึกและแจ้ง QA</button> </div>`);
+}
+
+async function doAddComplaint() {
+const c=$(‘f_customer’).value.trim(), d=$(‘f_detail’).value.trim();
+if(!c||!d) return toast(‘กรุณากรอกข้อมูลให้ครบ’,false);
+await api(‘addComplaint’,{data:{customer:c,contact:$(‘f_contact’).value,product:$(‘f_product’).value,type:$(‘f_type’).value,severity:$(‘f_severity’).value,detail:d}});
+closeModal(); toast(‘บันทึกและแจ้ง QA สำเร็จ ✅’);
+renderComplaints($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PU: SUPPLIERS & PO
+// ═══════════════════════════════════════════════════════════════
+async function renderSuppliers(cont) {
+const data = await api(‘getSuppliers’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">Approved Supplier List</h3> <button onclick="showAddSupplier()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.length ? data.map(s=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<div><p class="text-white font-medium">${s.name}</p><p class="text-slate-500 text-xs">${s.category}</p></div>
+${badge(s.status)}
+</div>
+<div class="flex gap-6 text-sm">
+<div><p class="text-slate-500 text-xs">Rating</p><p class="text-white font-bold">★ ${s.rating}</p></div>
+<div><p class="text-slate-500 text-xs">OTD</p><p class="text-white font-bold">${s.otd}</p></div>
+<div><p class="text-slate-500 text-xs">ประเมินล่าสุด</p><p class="text-white">${s.lastEval}</p></div>
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มีข้อมูล Supplier’)}
+
+  </div>`;
+}
+
+function showAddSupplier() {
+openModal(‘เพิ่ม Supplier’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อบริษัท *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท</label> <input id="f_cat" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="วัตถุดิบ, บรรจุภัณฑ์"/></div> <div><label class="text-xs text-slate-400 mb-1 block">Rating (0–5)</label> <input id="f_rating" type="number" step="0.1" min="0" max="5" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">OTD (%)</label> <input id="f_otd" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="95%"/></div> <div><label class="text-xs text-slate-400 mb-1 block">สถานะ</label> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>Approved</option><option>Conditional</option><option>ยกเลิก</option> </select></div> </div> <button onclick="doAddSupplier()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddSupplier() {
+const n=$(‘f_name’).value.trim();
+if(!n) return toast(‘กรุณากรอกชื่อ’,false);
+await api(‘addSupplier’,{data:{name:n,category:$(‘f_cat’).value,rating:$(‘f_rating’).value,otd:$(‘f_otd’).value,status:$(‘f_status’).value,lastEval:new Date().toLocaleDateString(‘th-TH’)}});
+closeModal(); toast(‘เพิ่ม Supplier สำเร็จ’);
+renderSuppliers($(‘deptContent’));
+}
+
+async function renderPO(cont) {
+const data = await api(‘getPurchaseOrders’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ใบสั่งซื้อ (Purchase Orders)</h3> <button onclick="showAddPO()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม PO</button> </div> ${data.length ? data.map(p=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex justify-between items-center">
+<div>
+<p class="text-cyan-400 font-mono text-xs">${p.no}</p>
+<p class="text-white font-medium text-sm">${p.supplier}</p>
+<p class="text-slate-500 text-xs">${p.item} · กำหนด ${p.dueDate}</p>
+</div>
+<div class="text-right flex-shrink-0 ml-4">
+<p class="text-white font-bold">${(+p.amount).toLocaleString()} ฿</p>
+${badge(p.status)}
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มีใบสั่งซื้อ’)}
+
+  </div>`;
+}
+
+function showAddPO() {
+openModal(‘สร้าง Purchase Order’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">Supplier *</label> <input id="f_supplier" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">รายการ *</label> <input id="f_item" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">มูลค่า (฿)</label> <input id="f_amount" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">กำหนดส่ง</label> <input type="date" id="f_due" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <button onclick="doAddPO()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">สร้าง PO</button> </div>`);
+}
+
+async function doAddPO() {
+const s=$(‘f_supplier’).value.trim(), i=$(‘f_item’).value.trim();
+if(!s||!i) return toast(‘กรุณากรอกข้อมูล’,false);
+const d=$(‘f_due’).value?$(‘f_due’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addPurchaseOrder’,{data:{supplier:s,item:i,amount:$(‘f_amount’).value,dueDate:d,status:‘รอจัดส่ง’}});
+closeModal(); toast(‘สร้าง PO สำเร็จ’);
+renderPO($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PD: LINES & DAILY PRODUCTION
+// ═══════════════════════════════════════════════════════════════
+async function renderLines(cont) {
+const data = await api(‘getProductionLines’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">สถานะไลน์การผลิต</h3> <button onclick="showAddLine()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่มไลน์</button> </div> <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"> ${data.length ? data.map(l=>{ const pct=+l.target>0?Math.round(+l.output/+l.target*100):0; const statusColor={'เดินเครื่อง':'bg-emerald-500','หยุดซ่อม':'bg-red-500','เตรียมการ':'bg-yellow-500'}[l.lineStatus]||'bg-slate-500'; return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+<div class="flex justify-between mb-2">
+<div class="flex items-center gap-2">
+<div class="w-2.5 h-2.5 rounded-full ${statusColor} ${l.lineStatus==='เดินเครื่อง'?'animate-pulse':''}"></div>
+<p class="text-white font-bold">${l.name}</p>
+</div>
+${badge(l.lineStatus)}
+</div>
+<p class="text-slate-400 text-xs mb-3">${l.product}</p>
+<div class="flex justify-between text-sm mb-2">
+<span class="text-slate-400">ผลผลิต</span>
+<span class="text-white font-bold">${(+l.output).toLocaleString()} / ${(+l.target).toLocaleString()}</span>
+</div>
+<div class="bg-slate-700 rounded-full h-2 mb-2">
+<div class="h-2 rounded-full ${pct>=90?'bg-emerald-400':pct>0?'bg-yellow-400':'bg-slate-600'}" style="width:${pct}%"></div>
+</div>
+<div class="flex justify-between text-xs">
+<span class="text-slate-500">OEE</span>
+<span class="font-bold ${+l.oee>=80?'text-emerald-400':+l.oee>0?'text-yellow-400':'text-slate-500'}">${l.oee}%</span>
+</div>
+<button onclick="showEditLine('${l.id}','${l.lineStatus}','${l.output}','${l.oee}')" class="mt-3 text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded">อัปเดต</button>
+</div>`;}).join(’’) : empty(‘ยังไม่มีข้อมูลไลน์ผลิต’)}
+</div>
+
+  </div>`;
+}
+
+function showAddLine() {
+openModal(‘เพิ่มไลน์การผลิต’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อไลน์ *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="ไลน์ A"/></div> <div><label class="text-xs text-slate-400 mb-1 block">สินค้า</label> <input id="f_product" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-3 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ผลผลิต</label> <input id="f_output" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เป้า</label> <input id="f_target" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">OEE (%)</label> <input id="f_oee" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">สถานะ</label> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>เดินเครื่อง</option><option>หยุดซ่อม</option><option>เตรียมการ</option> </select></div> <button onclick="doAddLine()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddLine() {
+const n=$(‘f_name’).value.trim();
+if(!n) return toast(‘กรุณากรอกชื่อไลน์’,false);
+await api(‘addProductionLine’,{data:{name:n,product:$(‘f_product’).value,output:$(‘f_output’).value,target:$(‘f_target’).value,oee:$(‘f_oee’).value,lineStatus:$(‘f_status’).value}});
+closeModal(); toast(‘เพิ่มไลน์สำเร็จ’);
+renderLines($(‘deptContent’));
+}
+
+function showEditLine(id, status, output, oee) {
+openModal(‘อัปเดตสถานะไลน์’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">สถานะ</label> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${['เดินเครื่อง','หยุดซ่อม','เตรียมการ'].map(s=>`<option ${s===status?‘selected’:’’}>${s}</option>`).join('')} </select></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ผลผลิต</label> <input id="f_output" type="number" value="${output}" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">OEE (%)</label> <input id="f_oee" type="number" value="${oee}" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <button onclick="doUpdateLine('${id}')" class="w-full bg-cyan-600 text-white py-2.5 rounded-xl text-sm font-semibold">บันทึก</button> </div>`);
+}
+
+async function doUpdateLine(id) {
+await api(‘updateProductionLine’,{id,data:{lineStatus:$(‘f_status’).value,output:$(‘f_output’).value,oee:$(‘f_oee’).value}});
+closeModal(); toast(‘อัปเดตสำเร็จ’);
+renderLines($(‘deptContent’));
+}
+
+async function renderDailyProd(cont) {
+const data = await api(‘getDailyProduction’,{});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">บันทึกผลการผลิต</h3> <button onclick="showAddDaily()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ บันทึก</button> </div> ${data.length ? data.slice().reverse().slice(0,20).map(d=>{ const pct=+d.target>0?Math.round(+d.output/+d.target*100):0; return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-1">
+<p class="text-white font-semibold text-sm">${d.shift}</p>
+<p class="text-slate-500 text-xs">${d.date}</p>
+</div>
+<p class="text-slate-500 text-xs mb-2">ผู้ควบคุม: ${d.operator}</p>
+<div class="grid grid-cols-3 gap-3 mb-2 text-sm">
+<div><p class="text-slate-500 text-xs">ผลผลิต</p><p class="text-white font-bold">${(+d.output).toLocaleString()}</p></div>
+<div><p class="text-slate-500 text-xs">เป้า</p><p class="text-white">${(+d.target).toLocaleString()}</p></div>
+<div><p class="text-slate-500 text-xs">ของเสีย</p><p class="text-red-400 font-bold">${d.defect}</p></div>
+</div>
+<div class="flex items-center gap-2">
+<div class="flex-1 bg-slate-700 rounded-full h-1.5">
+<div class="h-1.5 rounded-full ${pct>=90?'bg-emerald-400':'bg-yellow-400'}" style="width:${Math.min(100,pct)}%"></div>
+</div>
+<span class="text-xs text-slate-400">${pct}%</span>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีบันทึก’)}
+
+  </div>`;
+}
+
+function showAddDaily() {
+openModal(‘บันทึกผลการผลิต’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">วันที่</label> <input type="date" id="f_date" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">กะ</label> <select id="f_shift" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>กะเช้า (06:00–14:00)</option><option>กะบ่าย (14:00–22:00)</option><option>กะดึก (22:00–06:00)</option> </select></div> </div> <div class="grid grid-cols-3 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ผลผลิต</label> <input id="f_output" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เป้า</label> <input id="f_target" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ของเสีย</label> <input id="f_defect" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ควบคุมกะ</label> <input id="f_operator" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddDaily()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddDaily() {
+const d=$(‘f_date’).value?$(‘f_date’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addDailyProduction’,{data:{date:d,shift:$(‘f_shift’).value,output:$(‘f_output’).value,target:$(‘f_target’).value,defect:$(‘f_defect’).value,operator:$(‘f_operator’).value}});
+closeModal(); toast(‘บันทึกสำเร็จ’);
+renderDailyProd($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// QA: INSPECTION & CALIBRATION
+// ═══════════════════════════════════════════════════════════════
+async function renderInspection(cont) {
+const data = await api(‘getInspection’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ผลการตรวจสอบคุณภาพ</h3> <button onclick="showAddInspection()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ บันทึก</button> </div> ${data.length ? data.slice().reverse().slice(0,20).map(ins=>{ const fail=+ins.qty-(+ins.passed); const rate=(+ins.qty>0?(+ins.passed/+ins.qty*100).toFixed(1):0); return `<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<div><p class="text-white font-semibold text-sm">${ins.type}</p>
+<p class="text-slate-500 text-xs font-mono">${ins.lot}</p></div>
+<div class="text-right">${badge(ins.result)}<p class="text-slate-500 text-xs mt-1">${ins.date}</p></div>
+</div>
+<div class="flex gap-4 text-sm">
+<div><p class="text-slate-500 text-xs">ตรวจ</p><p class="text-white">${ins.qty}</p></div>
+<div><p class="text-slate-500 text-xs">ผ่าน</p><p class="text-emerald-400 font-bold">${ins.passed}</p></div>
+<div><p class="text-slate-500 text-xs">ไม่ผ่าน</p><p class="${fail>0?'text-red-400':'text-slate-400'} font-bold">${fail}</p></div>
+<div><p class="text-slate-500 text-xs">Pass Rate</p><p class="text-white font-bold">${rate}%</p></div>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีผลการตรวจสอบ’)}
+
+  </div>`;
+}
+
+function showAddInspection() {
+openModal(‘บันทึกผลการตรวจสอบ’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท</label> <select id="f_type" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>IQC วัตถุดิบ</option><option>IPQC ระหว่างผลิต</option><option>OQC สำเร็จรูป</option><option>IQC บรรจุภัณฑ์</option> </select></div> <div><label class="text-xs text-slate-400 mb-1 block">Lot No.</label> <input id="f_lot" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-3 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ปริมาณตรวจ</label> <input id="f_qty" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ผ่าน</label> <input id="f_passed" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">วันที่</label> <input type="date" id="f_date" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ตรวจ</label> <input id="f_inspector" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddInspection()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddInspection() {
+const qty=$(‘f_qty’).value, passed=$(‘f_passed’).value;
+if(!qty||!passed) return toast(‘กรุณากรอกข้อมูล’,false);
+const d=$(‘f_date’).value?$(‘f_date’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addInspection’,{data:{type:$(‘f_type’).value,lot:$(‘f_lot’).value,qty,passed,date:d,inspector:$(‘f_inspector’).value}});
+closeModal(); toast(‘บันทึกผลตรวจสำเร็จ’);
+renderInspection($(‘deptContent’));
+}
+
+async function renderCalibration(cont) {
+const data = await api(‘getCalibration’);
+const alerts = data.filter(c=>c.calStatus!==‘ปกติ’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">สถานะเครื่องมือวัดและสอบเทียบ</h3> <button onclick="showAddCal()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${alerts.length?`<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-4 flex items-center gap-2 text-sm text-red-300">⚠️ พบเครื่องมือที่ต้องดำเนินการ ${alerts.length} รายการ</div>`:''} ${data.length ? data.map(c=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center justify-between">
+<div>
+<p class="text-white font-medium text-sm">${c.name}</p>
+<p class="text-slate-500 text-xs">สอบเทียบ ${c.calDate} → ครั้งถัดไป ${c.nextDate}</p>
+<p class="text-slate-500 text-xs">โดย: ${c.calibratedBy}</p>
+</div>
+${badge(c.calStatus||‘ปกติ’)}
+</div>`).join(’’) : empty(‘ยังไม่มีข้อมูลเครื่องมือวัด’)}
+
+  </div>`;
+}
+
+function showAddCal() {
+openModal(‘เพิ่มเครื่องมือวัด’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อเครื่องมือ *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="Vernier Caliper #01"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">วันที่สอบเทียบ</label> <input type="date" id="f_caldate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ครั้งถัดไป</label> <input type="date" id="f_nextdate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้สอบเทียบ</label> <input id="f_by" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddCal()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddCal() {
+const n=$(‘f_name’).value.trim();
+if(!n) return toast(‘กรุณากรอกชื่อเครื่องมือ’,false);
+const fmt=v=>v?v.split(’-’).reverse().join(’/’):’’;
+await api(‘addCalibration’,{data:{name:n,calDate:fmt($(‘f_caldate’).value),nextDate:fmt($(‘f_nextdate’).value),calibratedBy:$(‘f_by’).value}});
+closeModal(); toast(‘เพิ่มสำเร็จ’);
+renderCalibration($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WH: INVENTORY & MOVEMENTS
+// ═══════════════════════════════════════════════════════════════
+async function renderInventory(cont) {
+const data = await api(‘getInventory’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">สต็อกสินค้าคงคลัง</h3> <button onclick="showAddItem()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่มรายการ</button> </div> ${data.length ? data.map(item=>{ const low=+item.qty<+item.minQty; const pct=+item.maxQty>+item.minQty?Math.round((+item.qty-+item.minQty)/(+item.maxQty-+item.minQty)*100):0; return `<div class="bg-slate-800/50 border ${low?'border-red-500/40':'border-slate-700'} rounded-xl p-4 mb-3">
+${low?`<span class="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full mb-2 inline-block">⚠️ ต่ำกว่า Min</span>`:’’}
+<div class="flex justify-between mb-2">
+<div><p class="text-white font-medium text-sm">${item.name}</p>
+<p class="text-slate-500 text-xs font-mono">${item.code} · ${item.location}</p></div>
+<div class="text-right">
+<p class="font-bold text-lg ${low?'text-red-400':'text-white'}">${(+item.qty).toLocaleString()}</p>
+<p class="text-slate-500 text-xs">${item.unit}</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-slate-600 text-xs">${item.minQty}</span>
+<div class="flex-1 bg-slate-700 rounded-full h-1.5">
+<div class="h-1.5 rounded-full ${low?'bg-red-400':pct>70?'bg-emerald-400':'bg-yellow-400'}" style="width:${Math.max(0,Math.min(100,pct))}%"></div>
+</div>
+<span class="text-slate-600 text-xs">${item.maxQty}</span>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีข้อมูลสต็อก’)}
+
+  </div>`;
+}
+
+function showAddItem() {
+openModal(‘เพิ่มรายการสต็อก’, ` <div class="space-y-3"> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">รหัส</label> <input id="f_code" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="RM-001"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อสินค้า *</label> <input id="f_name" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-4 gap-2"> <div><label class="text-xs text-slate-400 mb-1 block">จำนวน</label> <input id="f_qty" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">หน่วย</label> <input id="f_unit" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="kg"/></div> <div><label class="text-xs text-slate-400 mb-1 block">Min</label> <input id="f_min" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">Max</label> <input id="f_max" type="number" value="0" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">Location</label> <input id="f_loc" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="A-01"/></div> <button onclick="doAddItem()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddItem() {
+const n=$(‘f_name’).value.trim();
+if(!n) return toast(‘กรุณากรอกชื่อ’,false);
+await api(‘addInventoryItem’,{data:{code:$(‘f_code’).value,name:n,qty:$(‘f_qty’).value,unit:$(‘f_unit’).value,minQty:$(‘f_min’).value,maxQty:$(‘f_max’).value,location:$(‘f_loc’).value}});
+closeModal(); toast(‘เพิ่มสำเร็จ’);
+renderInventory($(‘deptContent’));
+}
+
+async function renderMovements(cont) {
+const data = await api(‘getStockMovements’,{});
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ความเคลื่อนไหวสต็อก</h3> <button onclick="showAddMove()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ รับ/จ่าย</button> </div> ${data.length ? data.slice().reverse().slice(0,30).map(m=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center gap-4">
+<div class="text-right w-16 flex-shrink-0"><p class="text-slate-400 text-xs">${m.time}</p><p class="text-slate-600 text-xs">${m.date}</p></div>
+<span class="text-xs px-2 py-1 rounded-lg font-bold flex-shrink-0 ${m.moveType==='รับเข้า'?'bg-emerald-500/20 text-emerald-300':'bg-orange-500/20 text-orange-300'}">${m.moveType===‘รับเข้า’?‘↓’:‘↑’} ${m.moveType}</span>
+<div class="flex-1 min-w-0">
+<p class="text-white font-medium text-sm">${m.code}</p>
+<p class="text-slate-500 text-xs">โดย ${m.by}${m.note?’ · ‘+m.note:’’}</p>
+</div>
+<p class="text-white font-bold flex-shrink-0">${(+m.qty).toLocaleString()} ${m.unit}</p>
+</div>`).join(’’) : empty(‘ยังไม่มีรายการเคลื่อนไหว’)}
+
+  </div>`;
+}
+
+function showAddMove() {
+openModal(‘บันทึกการรับ/จ่ายสินค้า’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท</label> <div class="flex gap-2"> <button id="btn_in" onclick="selectMove('รับเข้า')" class="flex-1 py-2 rounded-lg border text-sm font-semibold border-emerald-500 bg-emerald-500/20 text-emerald-300">↓ รับเข้า</button> <button id="btn_out" onclick="selectMove('เบิกออก')" class="flex-1 py-2 rounded-lg border text-sm font-semibold border-slate-600 text-slate-400">↑ เบิกออก</button> </div> <input type="hidden" id="f_movetype" value="รับเข้า"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">รหัสสินค้า *</label> <input id="f_code" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="RM-001"/></div> <div><label class="text-xs text-slate-400 mb-1 block">จำนวน</label> <input id="f_qty" type="number" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">หน่วย</label> <input id="f_unit" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้ดำเนินการ</label> <input id="f_by" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">หมายเหตุ</label> <input id="f_note" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddMove()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+function selectMove(type) {
+$(‘f_movetype’).value=type;
+$(‘btn_in’).className=’flex-1 py-2 rounded-lg border text-sm font-semibold ’+(type===‘รับเข้า’?‘border-emerald-500 bg-emerald-500/20 text-emerald-300’:‘border-slate-600 text-slate-400’);
+$(‘btn_out’).className=’flex-1 py-2 rounded-lg border text-sm font-semibold ’+(type===‘เบิกออก’?‘border-orange-500 bg-orange-500/20 text-orange-300’:‘border-slate-600 text-slate-400’);
+}
+
+async function doAddMove() {
+const c=$(‘f_code’).value.trim(), q=$(‘f_qty’).value;
+if(!c||!q) return toast(‘กรุณากรอกรหัสสินค้าและจำนวน’,false);
+await api(‘addStockMovement’,{data:{moveType:$(‘f_movetype’).value,code:c,qty:q,unit:$(‘f_unit’).value,by:$(‘f_by’).value,note:$(‘f_note’).value}});
+closeModal(); toast(‘บันทึกสำเร็จ (สต็อกอัปเดตอัตโนมัติ)’);
+renderMovements($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MN: WORK ORDERS, PM, REQUEST FORM
+// ═══════════════════════════════════════════════════════════════
+async function renderWorkOrders(cont) {
+const data = await api(‘getWorkOrders’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">ใบงานซ่อม</h3> </div> ${data.length ? data.slice().reverse().map(w=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-3">
+<div class="flex justify-between mb-2">
+<span class="text-cyan-400 font-mono text-xs">${w.no}</span>
+<div class="flex gap-1.5">
+${badge(w.priority)}${badge(w.woStatus)}
+</div>
+</div>
+<p class="text-white font-semibold text-sm">${w.machine}</p>
+<p class="text-slate-400 text-sm">${w.issue}</p>
+<p class="text-slate-500 text-xs mt-1">${w.location}${w.tech?’ · ช่าง: ‘+w.tech:’’} · เปิด ${w.openedDate}</p>
+<div class="flex gap-2 mt-3">
+<button onclick="showUpdateWO('${w.id}','${w.woStatus}')" class="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded">อัปเดต</button>
+</div>
+</div>`).join(’’) : empty(‘ไม่มีใบงานซ่อม’)}
+
+  </div>`;
+}
+
+function showUpdateWO(id, cur) {
+const statuses=[‘รอดำเนินการ’,‘กำลังซ่อม’,‘รอชิ้นส่วน’,‘เสร็จแล้ว’];
+openModal(‘อัปเดตสถานะใบงานซ่อม’,` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ช่างผู้รับผิดชอบ</label> <input id="f_tech" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <select id="f_status" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${statuses.map(s=>`<option ${s===cur?‘selected’:’’}>${s}</option>`).join('')} </select> <button onclick="doUpdateWO('${id}')" class="w-full bg-cyan-600 text-white py-2.5 rounded-xl text-sm font-semibold">บันทึก</button> </div>`);
+}
+
+async function doUpdateWO(id) {
+await api(‘updateWorkOrder’,{id,data:{woStatus:$(‘f_status’).value,tech:$(‘f_tech’).value}});
+closeModal(); toast(‘อัปเดตสำเร็จ’);
+renderWorkOrders($(‘deptContent’));
+}
+
+async function renderPM(cont) {
+const data = await api(‘getPMPlan’);
+cont.innerHTML = `<div class="fade"> <div class="flex justify-between items-center mb-4"> <h3 class="font-bold text-white">แผน Preventive Maintenance</h3> <button onclick="showAddPM()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg transition">+ เพิ่ม</button> </div> ${data.filter(p=>p.pmStatus!=='ปกติ').length?`<div class="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-4 text-sm text-red-300 flex items-center gap-2">⚠️ PM เกิน/ใกล้กำหนด ${data.filter(p=>p.pmStatus!==‘ปกติ’).length} รายการ</div>`:''} ${data.length ? data.map(p=>`
+<div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 mb-2 flex items-center justify-between">
+<div>
+<p class="text-white font-medium text-sm">${p.machine}</p>
+<p class="text-slate-500 text-xs">${p.pmType} · ล่าสุด ${p.lastDate} → ถัดไป ${p.nextDate}</p>
+${p.tech?`<p class="text-slate-600 text-xs">ช่าง: ${p.tech}</p>`:’’}
+</div>
+<div class="flex flex-col items-end gap-1 ml-3">
+${badge(p.pmStatus||‘ปกติ’)}
+<button onclick="showDonePM('${p.id}')" class="text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded">ทำ PM แล้ว</button>
+</div>
+</div>`).join(’’) : empty(‘ยังไม่มีแผน PM’)}
+
+  </div>`;
+}
+
+function showAddPM() {
+openModal(‘เพิ่มแผน PM’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">เครื่องจักร *</label> <input id="f_machine" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท PM</label> <select id="f_type" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>Daily PM</option><option>Weekly PM</option><option>Monthly PM</option><option>Quarterly PM</option><option>6-Month PM</option><option>Yearly PM</option> </select></div> <div><label class="text-xs text-slate-400 mb-1 block">ครั้งถัดไป</label> <input type="date" id="f_next" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ช่างผู้รับผิดชอบ</label> <input id="f_tech" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddPM()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddPM() {
+const m=$(‘f_machine’).value.trim();
+if(!m) return toast(‘กรุณากรอกชื่อเครื่องจักร’,false);
+const d=$(‘f_next’).value?$(‘f_next’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addPMPlan’,{data:{machine:m,pmType:$(‘f_type’).value,lastDate:’-’,nextDate:d,tech:$(‘f_tech’).value}});
+closeModal(); toast(‘เพิ่มแผน PM สำเร็จ’);
+renderPM($(‘deptContent’));
+}
+
+function showDonePM(id) {
+openModal(‘บันทึก PM เสร็จสิ้น’, ` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">กำหนด PM ครั้งถัดไป</label> <input type="date" id="f_next" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doDonePM('${id}')" class="w-full bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-semibold">✅ ยืนยันทำ PM แล้ว</button> </div>`);
+}
+
+async function doDonePM(id) {
+const today=new Date();
+const last=`${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+const d=$(‘f_next’).value?$(‘f_next’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘updatePMPlan’,{id,data:{lastDate:last,nextDate:d}});
+closeModal(); toast(‘บันทึก PM เสร็จสิ้น’);
+renderPM($(‘deptContent’));
+}
+
+function renderWOForm(cont) {
+cont.innerHTML = `<div class="fade max-w-2xl"> <h3 class="font-bold text-white mb-4">แจ้งซ่อมบำรุง</h3> <div class="space-y-4"> <div><label class="text-xs text-slate-400 mb-1 block">หัวข้อการแจ้งซ่อม *</label> <input id="wo_title" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="เช่น เครื่องอัดลมรั่ว"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ตำแหน่ง *</label> <input id="wo_location" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="ไลน์ A, คลัง B2"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เครื่องจักร</label> <input id="wo_machine" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="Compressor #3"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ความเร่งด่วน</label> <div class="flex gap-2"> ${[['ฉุกเฉิน','border-red-500 text-red-300'],['สูง','border-orange-500 text-orange-300'],['ปกติ','border-yellow-500 text-yellow-300'],['ต่ำ','border-slate-500 text-slate-300']].map(([lv,cls])=>`
+<button onclick="selectPriority('${lv}',this)" data-level="${lv}" class="flex-1 py-2 rounded-lg border text-xs font-semibold transition ${lv==='ปกติ'?`bg-slate-700 ${cls}`:'border-slate-600 text-slate-400'}">${lv}</button>`).join(’’)}
+</div>
+<input type="hidden" id="wo_priority" value="ปกติ"/></div>
+<div><label class="text-xs text-slate-400 mb-1 block">รายละเอียดอาการ *</label>
+<textarea id="wo_desc" rows="3" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition resize-none" placeholder="อธิบายอาการ เสียง ควัน error code..."></textarea></div>
+<button onclick="doSubmitWO()" class="w-full bg-amber-600 hover:bg-amber-500 text-white py-3 rounded-xl font-semibold text-sm transition">📤 ส่งใบงานซ่อม</button>
+</div>
+
+  </div>`;
+}
+
+function selectPriority(lv, btn) {
+$(‘wo_priority’).value=lv;
+const cls={ฉุกเฉิน:‘bg-slate-700 border-red-500 text-red-300’,สูง:‘bg-slate-700 border-orange-500 text-orange-300’,ปกติ:‘bg-slate-700 border-yellow-500 text-yellow-300’,ต่ำ:‘bg-slate-700 border-slate-500 text-slate-300’};
+document.querySelectorAll(’[data-level]’).forEach(b=>{
+b.className=`flex-1 py-2 rounded-lg border text-xs font-semibold transition ${b.dataset.level===lv?cls[lv]:'border-slate-600 text-slate-400'}`;
+});
+}
+
+async function doSubmitWO() {
+const t=$(‘wo_title’).value.trim(),l=$(‘wo_location’).value.trim(),d=$(‘wo_desc’).value.trim();
+if(!t||!l||!d) return toast(‘กรุณากรอกข้อมูลที่จำเป็น’,false);
+const res=await api(‘addWorkOrder’,{data:{machine:$(‘wo_machine’).value||’-’,location:l,issue:t+’ — ’+d,priority:$(‘wo_priority’).value}});
+toast(`ส่งใบงานซ่อมสำเร็จ ✅`);
+renderWOForm($(‘deptContent’));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANNOUNCEMENTS
+// ═══════════════════════════════════════════════════════════════
+async function renderAnnouncements() {
+loading(‘โหลดประกาศ…’);
+const data = await api(‘getAnnouncements’,{});
+const sorted = data.slice().reverse();
+app().innerHTML = `<div class="fade"> <div class="flex items-center justify-between mb-6"> <div><h1 class="text-3xl font-bold text-white mb-1">📢 ประกาศและชี้แจง</h1> <p class="text-slate-400">ข่าวสารจากทุกแผนก</p></div> <button onclick="showAddAnn()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-4 py-2 rounded-xl transition">+ ประกาศใหม่</button> </div> ${sorted.length ? sorted.map(a=>{ const d=DEPTS.find(x=>x.id===a.dept)||{}; const isUrgent=a.urgent==='TRUE'||a.urgent===true; const isPinned=a.pinned==='TRUE'||a.pinned===true; return `<div class="bg-slate-800/50 border ${isUrgent?'border-red-500/30':'border-slate-700'} rounded-xl overflow-hidden mb-3 cursor-pointer hover:border-slate-600 transition" onclick="toggleAnn(this)">
+<div class="h-1 bg-gradient-to-r ${d.grad||'from-slate-500 to-slate-600'}"></div>
+<div class="p-5">
+<div class="flex items-start justify-between gap-3">
+<div class="flex-1">
+<div class="flex flex-wrap items-center gap-2 mb-2">
+${isPinned?’<span>📌</span>’:’’}
+<span class="text-xs font-bold px-2 py-0.5 rounded-full ${DCB[a.dept]||''}">${d.icon||’’} ${d.abbr||a.dept}</span>
+${isUrgent?’<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-300">⚡ เร่งด่วน</span>’:’’}
+<span class="text-xs text-slate-500">${a.postedDate} · โดย ${a.postedBy||’—’}</span>
+</div>
+<h3 class="font-semibold text-white">${a.title}</h3>
+<p class="ann-body text-slate-400 text-sm mt-1 truncate">${a.body}</p>
+</div>
+<span class="ann-arrow text-slate-500 flex-shrink-0">▼</span>
+</div>
+</div>
+</div>`;}).join('') : `<div class="text-center py-16 text-slate-500"><p class="text-4xl mb-3">📭</p><p>ยังไม่มีประกาศ</p></div>`}
+
+  </div>`;
+}
+
+function toggleAnn(el) {
+const body=el.querySelector(’.ann-body’);
+const arrow=el.querySelector(’.ann-arrow’);
+const isExpanded=!body.classList.contains(‘truncate’);
+if(isExpanded){body.classList.add(‘truncate’);arrow.textContent=‘▼’;}
+else{body.classList.remove(‘truncate’);arrow.textContent=‘▲’;}
+}
+
+function showAddAnn() {
+openModal(‘โพสต์ประกาศใหม่’,` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">แผนก</label> <select id="f_dept" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${DEPTS.map(d=>`<option value="${d.id}">${d.icon} ${d.name}</option>`).join('')} </select></div> <div><label class="text-xs text-slate-400 mb-1 block">หัวข้อ *</label> <input id="f_title" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">รายละเอียด *</label> <textarea id="f_body" rows="4" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none resize-none"></textarea></div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้โพสต์</label> <input id="f_by" value="${STATE.user.name||''}" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="flex gap-4"> <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"> <input type="checkbox" id="f_urgent" class="rounded"> ⚡ เร่งด่วน </label> <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer"> <input type="checkbox" id="f_pinned" class="rounded"> 📌 ปักหมุด </label> </div> <button onclick="doAddAnn()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">โพสต์ประกาศ</button> </div>`);
+}
+
+async function doAddAnn() {
+const t=$(‘f_title’).value.trim(), b=$(‘f_body’).value.trim();
+if(!t||!b) return toast(‘กรุณากรอกหัวข้อและรายละเอียด’,false);
+await api(‘addAnnouncement’,{data:{dept:$(‘f_dept’).value,title:t,body:b,postedBy:$(‘f_by’).value,urgent:$(‘f_urgent’).checked?‘TRUE’:‘FALSE’,pinned:$(‘f_pinned’).checked?‘TRUE’:‘FALSE’}});
+closeModal(); toast(‘โพสต์ประกาศสำเร็จ’);
+renderAnnouncements();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════════════════
+async function renderEvents() {
+loading(‘โหลดกิจกรรม…’);
+const data = await api(‘getEvents’,{});
+const typeColor={‘Internal’:‘bg-cyan-500/20 text-cyan-300’,‘Management’:‘bg-purple-500/20 text-purple-300’,‘Training’:‘bg-emerald-500/20 text-emerald-300’,‘External’:‘bg-orange-500/20 text-orange-300’,‘PM’:‘bg-amber-500/20 text-amber-300’};
+app().innerHTML = `<div class="fade"> <div class="flex items-center justify-between mb-6"> <div><h1 class="text-3xl font-bold text-white mb-1">📅 กิจกรรม & Audit Plan</h1> <p class="text-slate-400">กำหนดการและกิจกรรมองค์กร</p></div> <button onclick="showAddEvent()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-4 py-2 rounded-xl transition">+ เพิ่มกิจกรรม</button> </div> ${data.length ? data.slice().sort((a,b)=>a.date>b.date?1:-1).map(ev=>{ const d=DEPTS.find(x=>x.id===ev.dept)||{}; return `<div class="bg-slate-800/50 border border-slate-700 hover:border-cyan-500/30 rounded-xl overflow-hidden mb-4 transition">
+<div class="h-1 bg-gradient-to-r ${d.grad||'from-slate-500 to-slate-600'}"></div>
+<div class="p-5 flex items-start gap-4">
+<div class="flex-1">
+<div class="flex flex-wrap items-center gap-2 mb-1">
+<h3 class="font-semibold text-white">${ev.title}</h3>
+<span class="text-xs px-2 py-0.5 rounded-full ${typeColor[ev.type]||'bg-slate-500/20 text-slate-300'}">${ev.type}</span>
+</div>
+<div class="flex flex-wrap gap-4 text-sm text-slate-400 mt-1">
+<span>📅 ${ev.date}${ev.time?’ ‘+ev.time:’’}</span>
+<span>👤 ${ev.by}</span>
+${ev.note?`<span>📝 ${ev.note}</span>`:’’}
+</div>
+</div>
+<button onclick="delEvent('${ev.id}')" class="text-slate-600 hover:text-red-400 text-sm transition flex-shrink-0">✕</button>
+</div>
+</div>`;}).join(’’) : empty(‘ยังไม่มีกิจกรรม’,‘กด + เพิ่มกิจกรรมเพื่อเริ่มต้น’)}
+
+  </div>`;
+}
+
+function showAddEvent() {
+openModal(‘เพิ่มกิจกรรม’,` <div class="space-y-3"> <div><label class="text-xs text-slate-400 mb-1 block">ชื่อกิจกรรม *</label> <input id="f_title" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">แผนก</label> <select id="f_dept" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> ${DEPTS.map(d=>`<option value="${d.id}">${d.icon} ${d.name}</option>`).join('')} </select></div> <div><label class="text-xs text-slate-400 mb-1 block">ประเภท</label> <select id="f_type" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"> <option>Internal</option><option>External</option><option>Management</option><option>Training</option><option>PM</option><option>อื่นๆ</option> </select></div> </div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">วันที่</label> <input type="date" id="f_date" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เวลา</label> <input id="f_time" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none" placeholder="09:00–12:00 น."/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ผู้รับผิดชอบ</label> <input id="f_by" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <div><label class="text-xs text-slate-400 mb-1 block">หมายเหตุ</label> <input id="f_note" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none"/></div> <button onclick="doAddEvent()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-xl text-sm font-semibold transition">บันทึก</button> </div>`);
+}
+
+async function doAddEvent() {
+const t=$(‘f_title’).value.trim();
+if(!t) return toast(‘กรุณากรอกชื่อกิจกรรม’,false);
+const d=$(‘f_date’).value?$(‘f_date’).value.split(’-’).reverse().join(’/’):’’;
+await api(‘addEvent’,{data:{title:t,dept:$(‘f_dept’).value,date:d,time:$(‘f_time’).value,type:$(‘f_type’).value,by:$(‘f_by’).value,note:$(‘f_note’).value}});
+closeModal(); toast(‘เพิ่มกิจกรรมสำเร็จ’);
+renderEvents();
+}
+
+async function delEvent(id) {
+if(!confirm(‘ยืนยันลบกิจกรรมนี้?’)) return;
+await api(‘deleteEvent’,{id}); toast(‘ลบแล้ว’);
+renderEvents();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+function init() {
+// ดึงข้อมูลผู้ใช้จาก Google Session
+google.script.run
+.withSuccessHandler(email => {
+const name = email ? email.split(’@’)[0] : ‘ผู้ใช้’;
+const initials = name.slice(0,2).toUpperCase();
+STATE.user = {name, email: email||’’, initials};
+renderNav();
+renderPage();
+})
+.withFailureHandler(() => { renderNav(); renderPage(); })
+.getActiveUserEmail();
+}
+
+// helper: expose getActiveUserEmail (เพิ่มใน Code.gs ได้เลย)
+// function getActiveUserEmail() { return Session.getActiveUser().getEmail(); }
+
+// Bootstrap
+window.addEventListener(‘load’, () => {
+// ถ้าทดสอบใน browser ธรรมดา (ไม่ใช่ Apps Script)
+if (typeof google === ‘undefined’) {
+window.google = { script: { run: new Proxy({}, { get: (_, action) => ({
+withSuccessHandler: (fn) => ({ withFailureHandler: () => ({ [action]: (…args) => fn(null) }) }),
+withFailureHandler: (fn) => ({ [action]: () => fn(new Error(‘Offline’)) }),
+}) }) } };
+STATE.user = {name:‘ทดสอบ’, email:‘test@co.th’, initials:‘ทด’};
+renderNav();
+renderPage();
+} else {
+init();
+}
+});
+</script>
+
+</body>
+</html>

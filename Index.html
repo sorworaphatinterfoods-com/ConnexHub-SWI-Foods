@@ -821,7 +821,7 @@ openModal(‘รับข้อร้องเรียนลูกค้า’,
 async function doAddComplaint() {
 const c=$(‘f_customer’).value.trim(), d=$(‘f_detail’).value.trim();
 if(!c||!d) return toast(‘กรุณากรอกข้อมูลให้ครบ’,false);
-await api(‘addComplaint’,{data:{customer:c,contact:$(‘f_contact’).value,product:$(‘f_product’).value,type:$(‘f_type’).value,severity:$(‘f_severity’).value,detail:d}});
+await api(‘addComplaint’,{data:{customer:c,contact:$(‘f_contact’).value,product:$(‘f_product’).value,type:$(‘f_type’).value,severity:$(‘f_severity’).value,detail:d,imageUrls:$(‘f_link’).value}});
 closeModal(); toast(‘บันทึกและแจ้ง QA สำเร็จ ✅’);
 renderComplaints($(‘deptContent’));
 }
@@ -1196,12 +1196,15 @@ renderPM($(‘deptContent’));
 }
 
 function renderWOForm(cont) {
+IMG_STATE.workorder = [];
 cont.innerHTML = `<div class="fade max-w-2xl"> <h3 class="font-bold text-white mb-4">แจ้งซ่อมบำรุง</h3> <div class="space-y-4"> <div><label class="text-xs text-slate-400 mb-1 block">หัวข้อการแจ้งซ่อม *</label> <input id="wo_title" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="เช่น เครื่องอัดลมรั่ว"/></div> <div class="grid grid-cols-2 gap-3"> <div><label class="text-xs text-slate-400 mb-1 block">ตำแหน่ง *</label> <input id="wo_location" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="ไลน์ A, คลัง B2"/></div> <div><label class="text-xs text-slate-400 mb-1 block">เครื่องจักร</label> <input id="wo_machine" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="Compressor #3"/></div> </div> <div><label class="text-xs text-slate-400 mb-1 block">ความเร่งด่วน</label> <div class="flex gap-2"> ${[['ฉุกเฉิน','border-red-500 text-red-300'],['สูง','border-orange-500 text-orange-300'],['ปกติ','border-yellow-500 text-yellow-300'],['ต่ำ','border-slate-500 text-slate-300']].map(([lv,cls])=>`
 <button onclick="selectPriority('${lv}',this)" data-level="${lv}" class="flex-1 py-2 rounded-lg border text-xs font-semibold transition ${lv==='ปกติ'?`bg-slate-700 ${cls}`:'border-slate-600 text-slate-400'}">${lv}</button>`).join(’’)}
 </div>
 <input type="hidden" id="wo_priority" value="ปกติ"/></div>
 <div><label class="text-xs text-slate-400 mb-1 block">รายละเอียดอาการ *</label>
 <textarea id="wo_desc" rows="3" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition resize-none" placeholder="อธิบายอาการ เสียง ควัน error code..."></textarea></div>
+<div><label class="text-xs text-slate-400 mb-1 block">🔗 แนบลิงก์ (Google Drive, รูปภาพ, วิดีโอ ฯลฯ)</label>
+<input id="wo_link" type="url" class="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition" placeholder="https://..."/></div>
 <button onclick="doSubmitWO()" class="w-full bg-amber-600 hover:bg-amber-500 text-white py-3 rounded-xl font-semibold text-sm transition">📤 ส่งใบงานซ่อม</button>
 </div>
 
@@ -1217,10 +1220,10 @@ b.className=`flex-1 py-2 rounded-lg border text-xs font-semibold transition ${b.
 }
 
 async function doSubmitWO() {
-const t=$(‘wo_title’).value.trim(),l=$(‘wo_location’).value.trim(),d=$(‘wo_desc’).value.trim();
+const t=$(‘wo_title’).value.trim(), l=$(‘wo_location’).value.trim(), d=$(‘wo_desc’).value.trim();
 if(!t||!l||!d) return toast(‘กรุณากรอกข้อมูลที่จำเป็น’,false);
-const res=await api(‘addWorkOrder’,{data:{machine:$(‘wo_machine’).value||’-’,location:l,issue:t+’ — ’+d,priority:$(‘wo_priority’).value}});
-toast(`ส่งใบงานซ่อมสำเร็จ ✅`);
+await api(‘addWorkOrder’,{data:{machine:$(‘wo_machine’).value||’-’,location:l,issue:t+’ — ’+d,priority:$(‘wo_priority’).value,imageUrls:$(‘wo_link’).value}});
+toast(‘ส่งใบงานซ่อมสำเร็จ ✅’);
 renderWOForm($(‘deptContent’));
 }
 
@@ -1324,34 +1327,29 @@ renderEvents();
 // INIT
 // ═══════════════════════════════════════════════════════════════
 function init() {
-// ดึงข้อมูลผู้ใช้จาก Google Session
 google.script.run
-.withSuccessHandler(email => {
-const name = email ? email.split(’@’)[0] : ‘ผู้ใช้’;
-const initials = name.slice(0,2).toUpperCase();
-STATE.user = {name, email: email||’’, initials};
+.withSuccessHandler(function(email) {
+const name = (email && email.length) ? email.split(’@’)[0] : ‘User’;
+STATE.user = { name: name, email: email || ‘’, initials: name.slice(0,2).toUpperCase() };
 renderNav();
 renderPage();
 })
-.withFailureHandler(() => { renderNav(); renderPage(); })
+.withFailureHandler(function() {
+STATE.user = { name: ‘User’, email: ‘’, initials: ‘US’ };
+renderNav();
+renderPage();
+})
 .getActiveUserEmail();
 }
 
-// helper: expose getActiveUserEmail (เพิ่มใน Code.gs ได้เลย)
-// function getActiveUserEmail() { return Session.getActiveUser().getEmail(); }
-
-// Bootstrap
-window.addEventListener(‘load’, () => {
-// ถ้าทดสอบใน browser ธรรมดา (ไม่ใช่ Apps Script)
-if (typeof google === ‘undefined’) {
-window.google = { script: { run: new Proxy({}, { get: (_, action) => ({
-withSuccessHandler: (fn) => ({ withFailureHandler: () => ({ [action]: (…args) => fn(null) }) }),
-withFailureHandler: (fn) => ({ [action]: () => fn(new Error(‘Offline’)) }),
-}) }) } };
-STATE.user = {name:‘ทดสอบ’, email:‘test@co.th’, initials:‘ทด’};
+window.addEventListener(‘load’, function() {
+if (typeof google === ‘undefined’ || !google.script) {
+STATE.user = { name: ‘ทดสอบ’, email: ‘test@co.th’, initials: ‘ทด’ };
 renderNav();
 renderPage();
 } else {
+renderNav();
+app().innerHTML = ‘<div class="flex items-center justify-center py-24 gap-3"><div class="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full spin"></div><p class="text-slate-400 text-sm">กำลังโหลด…</p></div>’;
 init();
 }
 });

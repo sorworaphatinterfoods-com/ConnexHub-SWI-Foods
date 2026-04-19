@@ -18,7 +18,7 @@ Budget:          [‘id’,‘category’,‘budget’,‘actual’,‘period’
 Approvals:       [‘id’,‘no’,‘dept’,‘amount’,‘item’,‘status’,‘requestDate’,‘requester’],
 SalesOrders:     [‘id’,‘no’,‘customer’,‘amount’,‘status’,‘dueDate’,‘product’],
 SalesTargets:    [‘id’,‘product’,‘target’,‘actual’,‘period’],
-Complaints:      [‘id’,‘no’,‘customer’,‘contact’,‘product’,‘type’,‘detail’,‘severity’,‘status’,‘date’,‘qaNotified’,‘qaLink’],
+Complaints:      [‘id’,‘no’,‘customer’,‘contact’,‘product’,‘type’,‘detail’,‘severity’,‘status’,‘date’,‘qaNotified’,‘qaLink’,‘imageUrls’],
 Suppliers:       [‘id’,‘name’,‘category’,‘rating’,‘otd’,‘status’,‘lastEval’],
 PurchaseOrders:  [‘id’,‘no’,‘supplier’,‘amount’,‘status’,‘dueDate’,‘item’],
 ProductionLines: [‘id’,‘name’,‘lineStatus’,‘output’,‘target’,‘product’,‘oee’,‘updatedDate’],
@@ -27,7 +27,7 @@ Inspection:      [‘id’,‘type’,‘lot’,‘qty’,‘passed’,‘result
 Calibration:     [‘id’,‘name’,‘calDate’,‘nextDate’,‘calStatus’,‘calibratedBy’],
 Inventory:       [‘id’,‘code’,‘name’,‘qty’,‘unit’,‘minQty’,‘maxQty’,‘location’],
 StockMovements:  [‘id’,‘date’,‘time’,‘moveType’,‘code’,‘qty’,‘unit’,‘by’,‘note’],
-WorkOrders:      [‘id’,‘no’,‘machine’,‘location’,‘issue’,‘priority’,‘woStatus’,‘tech’,‘openedDate’,‘closedDate’],
+WorkOrders:      [‘id’,‘no’,‘machine’,‘location’,‘issue’,‘priority’,‘woStatus’,‘tech’,‘openedDate’,‘closedDate’,‘imageUrls’],
 PMPlan:          [‘id’,‘machine’,‘pmType’,‘lastDate’,‘nextDate’,‘pmStatus’,‘tech’],
 Events:          [‘id’,‘title’,‘dept’,‘date’,‘time’,‘type’,‘by’,‘note’],
 };
@@ -121,7 +121,11 @@ return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), ‘dd/MM/yy
 function genNo(prefix) {
 const yr = new Date().getFullYear();
 const rnd = String(Math.floor(Math.random() * 9000 + 1000));
-return `${prefix}-${yr}-${rnd}`;
+return prefix + ‘-’ + yr + ‘-’ + rnd;
+}
+
+function getActiveUserEmail() {
+try { return Session.getActiveUser().getEmail(); } catch(e) { return ‘’; }
 }
 
 // ─── SETUP ───────────────────────────────────────────────────────────
